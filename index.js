@@ -87,6 +87,160 @@ app.post('/login', async (req, res) => {
     }
 });
 
+// ==========================================
+// 3. ACTUALIZAR NOMBRE DE PERFIL
+// ==========================================
+app.put('/update-profile', async (req, res) => {
+    try {
+        const { id, name } = req.body;
+        const result = await pool.query(
+            'UPDATE usuarios SET name = $1 WHERE id = $2 RETURNING id, name, email, role',
+            [name, id]
+        );
+        res.json({ message: 'Perfil actualizado', user: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ message: 'Error al actualizar perfil' });
+    }
+});
+
+// ==========================================
+// 4. CAMBIAR CONTRASEÑA
+// ==========================================
+app.put('/change-password', async (req, res) => {
+    try {
+        const { id, currentPassword, newPassword } = req.body;
+        
+        const userResult = await pool.query('SELECT * FROM usuarios WHERE id = $1', [id]);
+        const user = userResult.rows[0];
+
+        const validPassword = await bcrypt.compare(currentPassword, user.password);
+        if (!validPassword) return res.status(401).json({ message: 'Contraseña actual incorrecta' });
+
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+        await pool.query('UPDATE usuarios SET password = $1 WHERE id = $2', [hashedPassword, id]);
+        res.json({ message: 'Contraseña actualizada con éxito' });
+    } catch (error) {
+        res.status(500).json({ message: 'Error al cambiar contraseña' });
+    }
+});
+
+// ==========================================
+// 5. UNIRSE A UNA CLASE (ESTUDIANTE)
+// ==========================================
+app.post('/create-class', async (req, res) => {
+    try {
+        const { teacherId, name } = req.body;
+
+        // Generar un código aleatorio de 6 caracteres (ej: XF93A2)
+        const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+        const newClass = await pool.query(
+            'INSERT INTO aulas (name, code, teacher_id) VALUES ($1, $2, $3) RETURNING *',
+            [name, code, teacherId]
+        );
+
+        res.status(201).json({ message: 'Clase creada con éxito', aula: newClass.rows[0] });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error al crear la clase' });
+    }
+});
+
+// ==========================================
+// 6. OBTENER LAS CLASES DE UN MAESTRO
+// ==========================================
+app.get('/teacher-classes/:teacherId', async (req, res) => {
+    try {
+        const { teacherId } = req.params;
+        const classes = await pool.query(
+            'SELECT * FROM aulas WHERE teacher_id = $1 ORDER BY created_at DESC',
+            [teacherId]
+        );
+        res.json(classes.rows);
+    } catch (error) {
+        res.status(500).json({ message: 'Error al obtener las clases' });
+    }
+});
+
+// ==========================================
+// 7. UNIRSE A UNA CLASE (ESTUDIANTE) - ACTUALIZADO
+// ==========================================
+app.post('/join-class', async (req, res) => {
+    try {
+        const { studentId, code } = req.body;
+
+        // 1. Buscar el aula por el código
+        const aulaResult = await pool.query('SELECT * FROM aulas WHERE code = $1', [code]);
+        
+        if (aulaResult.rows.length === 0) {
+            return res.status(404).json({ message: 'Código de clase inválido' });
+        }
+
+        const aula = aulaResult.rows[0];
+        
+        // 2. Asignar el aula al estudiante
+        await pool.query('UPDATE usuarios SET aula_id = $1 WHERE id = $2', [aula.id, studentId]);
+
+        res.json({ 
+            message: `Te has unido exitosamente a: ${aula.name}`, 
+            aula: aula 
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error al unirse a la clase' });
+    }
+});
+
+// ==========================================
+// 8. OBTENER EL AULA ACTUAL DEL ESTUDIANTE
+// ==========================================
+app.get('/student-class/:studentId', async (req, res) => {
+    try {
+        const { studentId } = req.params;
+        
+        // 1. Primero verificamos si el estudiante existe y si tiene un aula asignada
+        const studentQuery = 'SELECT aula_id FROM usuarios WHERE id = $1';
+        const studentResult = await pool.query(studentQuery, [studentId]);
+
+        // Si el estudiante no existe en la BD, aquí SÍ corresponde un 404 real
+        if (studentResult.rows.length === 0) {
+            return res.status(404).json({ message: 'Estudiante no encontrado.' });
+        }
+
+        const aulaId = studentResult.rows[0].aula_id;
+
+        // 2. Si el campo aula_id es NULL, el estudiante NO está unido a ninguna clase (Estado válido)
+        if (aulaId === null) {
+            return res.status(200).json(null); // Respondemos un 200 exitoso con un cuerpo null
+        }
+        
+        // 3. Si tiene un aula_id, hacemos la consulta relacional con JOINs para traer los detalles
+        const query = `
+            SELECT a.name as aula_name, a.code, t.name as teacher_name 
+            FROM usuarios s
+            JOIN aulas a ON s.aula_id = a.id
+            JOIN usuarios t ON a.teacher_id = t.id
+            WHERE s.id = $1
+        `;
+        
+        const result = await pool.query(query, [studentId]);
+        
+        // Por si acaso el aula fue eliminada físicamente pero el alumno retuvo el ID
+        if (result.rows.length === 0) {
+            return res.status(200).json(null); 
+        }
+        
+        // Enviamos los datos del aula con HTTP 200
+        res.status(200).json(result.rows[0]);
+
+    } catch (error) {
+        console.error('Error en GET /student-class:', error);
+        res.status(500).json({ message: 'Error interno del servidor.' });
+    }
+});
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
