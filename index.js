@@ -5,7 +5,10 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
 const app = express();
-app.use(cors());
+app.use(cors({
+    origin: ['https://tu-url-de-netlify.netlify.app', 'http://localhost:4200']
+}));
+
 app.use(express.json());
 
 const pool = new Pool({
