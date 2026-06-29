@@ -6,8 +6,13 @@ const jwt = require("jsonwebtoken");
 require("dotenv").config();
 const app = express();
 app.use(cors({
-    origin: ['https://tranquil-speculoos-552c12.netlify.app/', 'http://localhost:4200']
+    origin: 'https://tranquil-speculoos-552c12.netlify.app',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true 
 }));
+
+app.options('*', cors());
 
 app.use(express.json());
 
