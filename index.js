@@ -6,7 +6,7 @@ const jwt = require("jsonwebtoken");
 require("dotenv").config();
 const app = express();
 app.use(cors({
-    origin: ['https://golden-cendol-2c8196.netlify.app/', 'http://localhost:4200']
+    origin: ['https://tranquil-speculoos-552c12.netlify.app/', 'http://localhost:4200']
 }));
 
 app.use(express.json());
