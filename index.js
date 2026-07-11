@@ -684,60 +684,64 @@ app.post("/create-class", async (req, res) => {
 });
 
 //#[ADMIN] OBTENER KPIs GLOBALES DEL SISTEMA
-app.get('/admin/global-kpis', async (req, res) => {
-    try {
-        const [usersRes, aulasRes, desafiosRes] = await Promise.all([
-            pool.query("SELECT role, COUNT(*) FROM usuarios GROUP BY role"),
-            pool.query("SELECT COUNT(*) FROM aulas"),
-            pool.query("SELECT COUNT(*) FROM desafios")
-        ]);
+app.get("/admin/global-kpis", async (req, res) => {
+  try {
+    // Ejecutamos varias consultas en paralelo para mayor velocidad
+    const [usersRes, aulasRes, desafiosRes] = await Promise.all([
+      pool.query("SELECT role, COUNT(*) FROM usuarios GROUP BY role"),
+      pool.query("SELECT COUNT(*) FROM aulas"),
+      pool.query("SELECT COUNT(*) FROM desafios"),
+    ]);
 
-        let totalEstudiantes = 0;
-        let totalMaestros = 0;
+    let totalEstudiantes = 0;
+    let totalMaestros = 0;
 
-        usersRes.rows.forEach(row => {
-            if (row.role === 'estudiante') totalEstudiantes = parseInt(row.count) || 0;
-            if (row.role === 'maestro') totalMaestros = parseInt(row.count) || 0;
-        });
+    usersRes.rows.forEach((row) => {
+      if (row.role === "estudiante") totalEstudiantes = parseInt(row.count);
+      if (row.role === "maestro") totalMaestros = parseInt(row.count);
+    });
 
-        res.json({
-            totalEstudiantes,
-            totalMaestros,
-            // Fallback a 0 si la cuenta devuelve nulo por algún motivo
-            totalAulas: parseInt(aulasRes.rows[0]?.count) || 0,
-            totalDesafios: parseInt(desafiosRes.rows[0]?.count) || 0 
-        });
-    } catch (error) {
-        console.error('Error obteniendo KPIs de Admin:', error);
-        res.status(500).json({ message: 'Error interno del servidor' });
-    }
+    res.json({
+      totalEstudiantes,
+      totalMaestros,
+      totalAulas: parseInt(aulasRes.rows[0].count),
+      totalDesafios: parseInt(desafiosRes.rows[0].count),
+    });
+  } catch (error) {
+    console.error("Error obteniendo KPIs de Admin:", error);
+    res.status(500).json({ message: "Error interno del servidor" });
+  }
 });
 
 //#gestion de catalogos
-app.get('/admin/catalogs', async (req, res) => {
-    try {
-        const horarios = await pool.query('SELECT * FROM cat_horarios ORDER BY id ASC');
-        const periodos = await pool.query('SELECT * FROM cat_periodos ORDER BY id ASC');
-        const carreras = await pool.query('SELECT * FROM cat_carreras ORDER BY nombre ASC');
-        
-        // CUIDADO AQUÍ: Si no hay materias o carreras, el JOIN no debe fallar
-        const materias = await pool.query(`
+app.get("/admin/catalogs", async (req, res) => {
+  try {
+    const horarios = await pool.query(
+      "SELECT * FROM cat_horarios ORDER BY id ASC",
+    );
+    const periodos = await pool.query(
+      "SELECT * FROM cat_periodos ORDER BY id ASC",
+    );
+    const carreras = await pool.query(
+      "SELECT * FROM cat_carreras ORDER BY nombre ASC",
+    );
+
+    const materias = await pool.query(`
             SELECT m.id, m.nombre, c.nombre as carrera_nombre, m.carrera_id 
             FROM cat_materias m 
-            LEFT JOIN cat_carreras c ON m.carrera_id = c.id 
+            JOIN cat_carreras c ON m.carrera_id = c.id 
             ORDER BY m.nombre ASC
         `);
 
-        res.json({
-            horarios: horarios.rows || [],
-            periodos: periodos.rows || [],
-            carreras: carreras.rows || [],
-            materias: materias.rows || []
-        });
-    } catch (error) {
-        console.error('Error en catálogos:', error);
-        res.status(500).json({ message: 'Error cargando catálogos' });
-    }
+    res.json({
+      horarios: horarios.rows,
+      periodos: periodos.rows,
+      carreras: carreras.rows,
+      materias: materias.rows,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Error cargando catálogos" });
+  }
 });
 
 // B. CREAR un nuevo registro (Endpoint genérico)
@@ -932,9 +936,10 @@ app.put("/admin/challenges/:id", async (req, res) => {
 
 //# [ADMIN] GESTIÓN DE USUARIOS (MODERACIÓN Y BANEO)
 //A
-app.get('/admin/users', async (req, res) => {
-    try {
-        const query = `
+app.get("/admin/users", async (req, res) => {
+  try {
+    // Excluimos a los administradores de la lista para que no se puedan banear entre ellos por error
+    const query = `
             SELECT u.id, u.name, u.email, u.role, u.is_active, u.created_at,
                    a.name as aula_actual
             FROM usuarios u
@@ -942,14 +947,13 @@ app.get('/admin/users', async (req, res) => {
             WHERE u.role != 'admin'
             ORDER BY u.role DESC, u.name ASC;
         `;
-        const result = await pool.query(query);
-        // Si no hay usuarios (excepto el admin), devuelve un array vacío de forma limpia
-        res.json(result.rows || []);
-    } catch (error) {
-        console.error('Error cargando usuarios admin:', error);
-        res.status(500).json({ message: 'Error cargando usuarios' });
-    }
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ message: "Error cargando usuarios" });
+  }
 });
+
 // B. Cambiar el estado de la cuenta (Suspender / Reactivar)
 app.put("/admin/users/:id/toggle-status", async (req, res) => {
   try {
