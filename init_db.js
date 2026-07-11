@@ -139,11 +139,6 @@ INSERT INTO cat_materias (nombre, carrera_id) VALUES
 ('DESARROLLO DE APLICACIONES MÓVILES', 1),
 ('INTELIGENCIA ARTIFICIAL', 1)
 ON CONFLICT DO NOTHING;
-
--- Opcional: Crear el usuario Admin por defecto si no quieres hacerlo a mano después de correr el script
-INSERT INTO usuarios (name, email, password, role, is_active)
-VALUES ('Administrador General', 'admin@tesis.com', '$2b$10$6uzKYWflyHUUSwd/sRc3quFaVSycrf1L7qpVpy8Kwq2D0oFJ3CrIO', 'admin', true)
-ON CONFLICT (email) DO NOTHING;
 `;
 
 async function initializeDB() {
