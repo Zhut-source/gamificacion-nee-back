@@ -7,19 +7,24 @@ require("dotenv").config();
 
 const app = express();
 
-app.use(cors({
-    origin: ['https://tranquil-speculoos-552c12.netlify.app', 'http://localhost:4200'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true 
-}));
+app.use(
+  cors({
+    origin: [
+      "https://tranquil-speculoos-552c12.netlify.app",
+      "http://localhost:4200",
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+  }),
+);
 
 app.use(express.json());
 
-const poolConfig = process.env.DATABASE_URL 
+const poolConfig = process.env.DATABASE_URL
   ? {
       connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false }
+      ssl: { rejectUnauthorized: false },
     }
   : {
       user: process.env.DB_USER,
@@ -41,7 +46,7 @@ pool
 //# Ruta registro
 app.post("/register", async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, aula_id } = req.body;
 
     const userExists = await pool.query(
       "SELECT * FROM usuarios WHERE email = $1",
@@ -55,8 +60,8 @@ app.post("/register", async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
 
     const newUser = await pool.query(
-      "INSERT INTO usuarios (name, email, password, role) VALUES ($1, $2, $3, $4) RETURNING id, name, email, role",
-      [name, email, hashedPassword, role],
+      "INSERT INTO usuarios (name, email, password, role, aula_id) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, email, role, aula_id",
+      [name, email, hashedPassword, role, aula_id || null],
     );
 
     res
@@ -84,6 +89,12 @@ app.post("/login", async (req, res) => {
     }
 
     const user = userResult.rows[0];
+
+    if (user.is_active === false) {
+      return res.status(403).json({
+        message: "Tu cuenta ha sido inhabilitada. Contacta al administrador.",
+      });
+    }
 
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) {
@@ -149,24 +160,6 @@ app.put("/change-password", async (req, res) => {
     res.json({ message: "Contraseña actualizada con éxito" });
   } catch (error) {
     res.status(500).json({ message: "Error al cambiar contraseña" });
-  }
-});
-
-//# crear clase
-app.post("/create-class", async (req, res) => {
-  try {
-    const { teacherId, name } = req.body;
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const newClass = await pool.query(
-      "INSERT INTO aulas (name, code, teacher_id) VALUES ($1, $2, $3) RETURNING *",
-      [name, code, teacherId],
-    );
-    res
-      .status(201)
-      .json({ message: "Clase creada con éxito", aula: newClass.rows[0] });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Error al crear la clase" });
   }
 });
 
@@ -253,7 +246,7 @@ app.get("/teacher/classroom-metrics/:aulaId", async (req, res) => {
     const query = `
             SELECT 
                 u.id as student_id, u.name, u.email,
-                i.nivel, i.dificultad, i.estado, i.fecha_intento
+                i.nivel, i.dificultad, i.estado, i.pistas_utilizadas, i.fecha_intento
             FROM usuarios u
             LEFT JOIN intentos_desafio i ON u.id = i.student_id
             WHERE u.aula_id = $1 AND u.role = 'estudiante'
@@ -270,6 +263,7 @@ app.get("/teacher/classroom-metrics/:aulaId", async (req, res) => {
           email: row.email,
           hitosCompletados: new Set(),
           intentosPorNivelDif: {},
+          pistasPorNivelDif: {},
           ultima_actividad: row.fecha_intento || null,
           alerta: false,
         });
@@ -288,7 +282,13 @@ app.get("/teacher/classroom-metrics/:aulaId", async (req, res) => {
         estudiante.intentosPorNivelDif[hitoKey] = [];
       }
       estudiante.intentosPorNivelDif[hitoKey].push(row.estado);
+
+      if (!estudiante.pistasPorNivelDif[hitoKey]) {
+        estudiante.pistasPorNivelDif[hitoKey] = [];
+      }
+      estudiante.pistasPorNivelDif[hitoKey].push(row.pistas_utilizadas || 0);
     });
+
     let sumaProgreso = 0;
     let estudiantesConDificultad = 0;
     const estudiantesArray = [];
@@ -296,22 +296,35 @@ app.get("/teacher/classroom-metrics/:aulaId", async (req, res) => {
     estudiantesMap.forEach((est) => {
       const porcentaje = Math.round((est.hitosCompletados.size / 15) * 100);
       est.progreso = porcentaje;
+      est.progreso = porcentaje;
       sumaProgreso += porcentaje;
 
       for (const hito in est.intentosPorNivelDif) {
-        const ultimosIntentos = est.intentosPorNivelDif[hito].slice(0, 3);
-        if (
-          ultimosIntentos.length >= 3 &&
-          ultimosIntentos.every((e) => e !== "completado")
-        ) {
+        const intentos = est.intentosPorNivelDif[hito];
+        const completado = intentos.includes("completado");
+
+        // Calcular promedio de pistas de este hito específico
+        const pistas = est.pistasPorNivelDif[hito] || [];
+        const sumaPistas = pistas.reduce((a, b) => a + b, 0);
+        const promedioPistas =
+          pistas.length > 0 ? sumaPistas / pistas.length : 0;
+
+        const totalIntentos = intentos.length;
+
+        // REGLA: 3 o más intentos en total OR promedio de pistas >= 3 (Y que no lo haya completado aún)
+        const alertaHito =
+          (totalIntentos >= 3 || promedioPistas >= 3) && !completado;
+
+        if (alertaHito) {
           est.alerta = true;
-          break;
+          break; // Si tiene alerta en un hito, ya califica globalmente como "con dificultades"
         }
       }
 
       if (est.alerta) estudiantesConDificultad++;
       delete est.hitosCompletados;
       delete est.intentosPorNivelDif;
+      delete est.pistasPorNivelDif;
 
       estudiantesArray.push(est);
     });
@@ -422,8 +435,8 @@ app.get("/teacher/student-details/:studentId", async (req, res) => {
       const completado = row.historial_estados.includes("completado");
       let estadoHito = completado ? "Completado" : "En progreso";
       const alerta =
-        parseInt(row.total_intentos) >= 5 ||
-        parseFloat(row.pistas_promedio) >= 5;
+        parseInt(row.total_intentos) >= 3 ||
+        parseFloat(row.pistas_promedio) >= 3;
       if (alerta && !completado) {
         estadoHito = "Requiere apoyo";
       }
@@ -566,6 +579,396 @@ app.post("/student/award-badge", async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ message: "Error otorgando insignia" });
+  }
+});
+
+//# OBTENER CATÁLOGOS PARA CREAR AULA
+app.get("/catalogs/creation-data", async (req, res) => {
+  try {
+    const horarios = await pool.query(
+      "SELECT * FROM cat_horarios ORDER BY id ASC",
+    );
+    const periodos = await pool.query(
+      "SELECT * FROM cat_periodos ORDER BY id ASC",
+    );
+    const carreras = await pool.query(
+      "SELECT * FROM cat_carreras ORDER BY nombre ASC",
+    );
+    const materias = await pool.query(
+      "SELECT * FROM cat_materias ORDER BY nombre ASC",
+    );
+
+    res.json({
+      horarios: horarios.rows,
+      periodos: periodos.rows,
+      carreras: carreras.rows,
+      materias: materias.rows,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Error obteniendo catálogos" });
+  }
+});
+
+//# MODIFICAR LA RUTA EXISTENTE DE CREATE-CLASS
+app.post("/create-class", async (req, res) => {
+  try {
+    const {
+      teacherId,
+      horarioId,
+      periodoId,
+      carreraId,
+      materiaId,
+      nivel,
+      aulaNum,
+    } = req.body;
+
+    // 1. Obtener los nombres reales para armar el título de la clase
+    const matRes = await pool.query(
+      "SELECT nombre FROM cat_materias WHERE id = $1",
+      [materiaId],
+    );
+    const horRes = await pool.query(
+      "SELECT nombre FROM cat_horarios WHERE id = $1",
+      [horarioId],
+    );
+    const perRes = await pool.query(
+      "SELECT nombre FROM cat_periodos WHERE id = $1",
+      [periodoId],
+    );
+    const carRes = await pool.query(
+      "SELECT nombre FROM cat_carreras WHERE id = $1",
+      [carreraId],
+    );
+
+    const materiaNombre = matRes.rows[0].nombre;
+    const horarioNombre = horRes.rows[0].nombre;
+    const periodoNombre = perRes.rows[0].nombre;
+    const carreraNombre = carRes.rows[0].nombre;
+
+    let carreraAbbrev = "GEN";
+    if (carreraNombre.toLowerCase().includes("software")) carreraAbbrev = "SOF";
+    else if (carreraNombre.toLowerCase().includes("web")) carreraAbbrev = "TDW";
+    else if (carreraNombre.toLowerCase().includes("sistemas"))
+      carreraAbbrev = "SIS";
+    else carreraAbbrev = carreraNombre.substring(0, 3).toUpperCase();
+
+    const periodoAbbrev = periodoNombre.charAt(0).toUpperCase(); // S o T
+    const horarioAbbrev = horarioNombre.substring(0, 2).toUpperCase();
+
+    const className = `${carreraAbbrev}-${periodoAbbrev}-${horarioAbbrev}-${nivel}-${aulaNum}-${materiaNombre.toUpperCase()}`;
+
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+    // 4. Guardar en BD con las nuevas llaves foráneas
+    const newClass = await pool.query(
+      "INSERT INTO aulas (name, code, teacher_id, horario_id, periodo_id, materia_id, nivel, aula_num) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *",
+      [
+        className,
+        code,
+        teacherId,
+        horarioId,
+        periodoId,
+        materiaId,
+        nivel,
+        aulaNum,
+      ],
+    );
+
+    res
+      .status(201)
+      .json({ message: "Clase creada con éxito", aula: newClass.rows[0] });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Error al crear la clase" });
+  }
+});
+
+//#[ADMIN] OBTENER KPIs GLOBALES DEL SISTEMA
+app.get("/admin/global-kpis", async (req, res) => {
+  try {
+    // Ejecutamos varias consultas en paralelo para mayor velocidad
+    const [usersRes, aulasRes, desafiosRes] = await Promise.all([
+      pool.query("SELECT role, COUNT(*) FROM usuarios GROUP BY role"),
+      pool.query("SELECT COUNT(*) FROM aulas"),
+      pool.query("SELECT COUNT(*) FROM desafios"),
+    ]);
+
+    let totalEstudiantes = 0;
+    let totalMaestros = 0;
+
+    usersRes.rows.forEach((row) => {
+      if (row.role === "estudiante") totalEstudiantes = parseInt(row.count);
+      if (row.role === "maestro") totalMaestros = parseInt(row.count);
+    });
+
+    res.json({
+      totalEstudiantes,
+      totalMaestros,
+      totalAulas: parseInt(aulasRes.rows[0].count),
+      totalDesafios: parseInt(desafiosRes.rows[0].count),
+    });
+  } catch (error) {
+    console.error("Error obteniendo KPIs de Admin:", error);
+    res.status(500).json({ message: "Error interno del servidor" });
+  }
+});
+
+//#gestion de catalogos
+app.get("/admin/catalogs", async (req, res) => {
+  try {
+    const horarios = await pool.query(
+      "SELECT * FROM cat_horarios ORDER BY id ASC",
+    );
+    const periodos = await pool.query(
+      "SELECT * FROM cat_periodos ORDER BY id ASC",
+    );
+    const carreras = await pool.query(
+      "SELECT * FROM cat_carreras ORDER BY nombre ASC",
+    );
+
+    const materias = await pool.query(`
+            SELECT m.id, m.nombre, c.nombre as carrera_nombre, m.carrera_id 
+            FROM cat_materias m 
+            JOIN cat_carreras c ON m.carrera_id = c.id 
+            ORDER BY m.nombre ASC
+        `);
+
+    res.json({
+      horarios: horarios.rows,
+      periodos: periodos.rows,
+      carreras: carreras.rows,
+      materias: materias.rows,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Error cargando catálogos" });
+  }
+});
+
+// B. CREAR un nuevo registro (Endpoint genérico)
+app.post("/admin/catalogs", async (req, res) => {
+  try {
+    const { tipo, nombre, carreraId } = req.body;
+
+    let result;
+    if (tipo === "horario") {
+      result = await pool.query(
+        "INSERT INTO cat_horarios (nombre) VALUES ($1) RETURNING *",
+        [nombre],
+      );
+    } else if (tipo === "periodo") {
+      result = await pool.query(
+        "INSERT INTO cat_periodos (nombre) VALUES ($1) RETURNING *",
+        [nombre],
+      );
+    } else if (tipo === "carrera") {
+      result = await pool.query(
+        "INSERT INTO cat_carreras (nombre) VALUES ($1) RETURNING *",
+        [nombre],
+      );
+    } else if (tipo === "materia") {
+      if (!carreraId)
+        return res
+          .status(400)
+          .json({ message: "Las materias requieren una carrera" });
+      result = await pool.query(
+        "INSERT INTO cat_materias (nombre, carrera_id) VALUES ($1, $2) RETURNING *",
+        [nombre, carreraId],
+      );
+    } else {
+      return res.status(400).json({ message: "Tipo de catálogo inválido" });
+    }
+
+    res.status(201).json({ message: "Registro creado", item: result.rows[0] });
+  } catch (error) {
+    // Manejar errores de nombre duplicado
+    if (error.code === "23505") {
+      return res
+        .status(400)
+        .json({ message: "Ya existe un registro con este nombre" });
+    }
+    res.status(500).json({ message: "Error al crear registro" });
+  }
+});
+
+// C. ELIMINAR un registro
+app.delete("/admin/catalogs/:tipo/:id", async (req, res) => {
+  try {
+    const { tipo, id } = req.params;
+
+    if (tipo === "horario")
+      await pool.query("DELETE FROM cat_horarios WHERE id = $1", [id]);
+    else if (tipo === "periodo")
+      await pool.query("DELETE FROM cat_periodos WHERE id = $1", [id]);
+    else if (tipo === "carrera")
+      await pool.query("DELETE FROM cat_carreras WHERE id = $1", [id]);
+    else if (tipo === "materia")
+      await pool.query("DELETE FROM cat_materias WHERE id = $1", [id]);
+
+    res.json({ success: true, message: "Registro eliminado" });
+  } catch (error) {
+    if (error.code === "23503") {
+      return res.status(400).json({
+        message: "No se puede eliminar porque está en uso por otros registros",
+      });
+    }
+    res.status(500).json({ message: "Error eliminando el registro" });
+  }
+});
+
+//#GESTIÓN DE AULAS Y DESVINCULACIÓN
+//A
+app.get("/admin/classrooms", async (req, res) => {
+  try {
+    const query = `
+            SELECT 
+                a.id, a.name as aula_nombre, a.code, a.created_at,
+                m.name as maestro_nombre,
+                c.nombre as carrera_nombre,
+                p.nombre as periodo_nombre,
+                (SELECT COUNT(*) FROM usuarios WHERE aula_id = a.id) as total_alumnos
+            FROM aulas a
+            LEFT JOIN usuarios m ON a.teacher_id = m.id
+            LEFT JOIN cat_carreras c ON a.materia_id IN (SELECT id FROM cat_materias WHERE carrera_id = c.id) -- Inferimos carrera
+            LEFT JOIN cat_periodos p ON a.periodo_id = p.id
+            ORDER BY a.created_at DESC;
+        `;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Error cargando aulas (Admin):", error);
+    res.status(500).json({ message: "Error cargando aulas" });
+  }
+});
+
+// B
+app.get("/admin/classrooms/:aulaId/students", async (req, res) => {
+  try {
+    const { aulaId } = req.params;
+    const query = `
+            SELECT id, name, email, created_at 
+            FROM usuarios 
+            WHERE aula_id = $1 AND role = 'estudiante'
+            ORDER BY name ASC;
+        `;
+    const result = await pool.query(query, [aulaId]);
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ message: "Error cargando estudiantes del aula" });
+  }
+});
+
+// C.
+app.put("/admin/students/:studentId/unlink", async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    await pool.query(
+      "UPDATE usuarios SET aula_id = NULL WHERE id = $1 AND role = $2",
+      [studentId, "estudiante"],
+    );
+    res.json({ success: true, message: "Estudiante desvinculado con éxito" });
+  } catch (error) {
+    res.status(500).json({ message: "Error al desvincular estudiante" });
+  }
+});
+
+// D.
+app.delete("/admin/classrooms/:aulaId", async (req, res) => {
+  try {
+    const { aulaId } = req.params;
+    await pool.query("DELETE FROM aulas WHERE id = $1", [aulaId]);
+    res.json({ success: true, message: "Aula eliminada con éxito" });
+  } catch (error) {
+    res.status(500).json({ message: "Error al eliminar el aula" });
+  }
+});
+
+//# [ADMIN] GESTIÓN DE CONTENIDO PEDAGÓGICO (DESAFÍOS)
+// A. Listar todos los desafíos ordenados por nivel
+app.get("/admin/challenges", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM desafios ORDER BY nivel ASC",
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Error cargando desafíos (Admin):", error);
+    res.status(500).json({ message: "Error interno" });
+  }
+});
+
+// B. Actualizar los textos y objetivos de un desafío
+app.put("/admin/challenges/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nombre, descripcion_nivel, descripcion_juego, objetivos } =
+      req.body;
+    const query = `
+            UPDATE desafios 
+            SET nombre = $1, 
+                descripcion_nivel = $2, 
+                descripcion_juego = $3, 
+                objetivos = $4
+            WHERE id = $5 
+            RETURNING *;
+        `;
+
+    const result = await pool.query(query, [
+      nombre,
+      descripcion_nivel,
+      descripcion_juego,
+      JSON.stringify(objetivos),
+      id,
+    ]);
+
+    if (result.rows.length === 0)
+      return res.status(404).json({ message: "Desafío no encontrado" });
+
+    res.json({
+      success: true,
+      message: "Contenido actualizado correctamente",
+      challenge: result.rows[0],
+    });
+  } catch (error) {
+    console.error("Error actualizando desafío:", error);
+    res.status(500).json({ message: "Error interno actualizando" });
+  }
+});
+
+//# [ADMIN] GESTIÓN DE USUARIOS (MODERACIÓN Y BANEO)
+//A
+app.get("/admin/users", async (req, res) => {
+  try {
+    // Excluimos a los administradores de la lista para que no se puedan banear entre ellos por error
+    const query = `
+            SELECT u.id, u.name, u.email, u.role, u.is_active, u.created_at,
+                   a.name as aula_actual
+            FROM usuarios u
+            LEFT JOIN aulas a ON u.aula_id = a.id
+            WHERE u.role != 'admin'
+            ORDER BY u.role DESC, u.name ASC;
+        `;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ message: "Error cargando usuarios" });
+  }
+});
+
+// B. Cambiar el estado de la cuenta (Suspender / Reactivar)
+app.put("/admin/users/:id/toggle-status", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body; // true = Activo, false = Baneado
+
+    await pool.query(
+      "UPDATE usuarios SET is_active = $1 WHERE id = $2 AND role != $3",
+      [isActive, id, "admin"],
+    );
+
+    const actionText = isActive ? "reactivada" : "inhabilitada";
+    res.json({ success: true, message: `Cuenta ${actionText} con éxito.` });
+  } catch (error) {
+    res.status(500).json({ message: "Error al cambiar estado de la cuenta" });
   }
 });
 
