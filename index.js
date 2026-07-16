@@ -238,11 +238,9 @@ app.get("/student-class/:studentId", async (req, res) => {
 app.get("/teacher/classroom-metrics/:aulaId", async (req, res) => {
   try {
     const { aulaId } = req.params;
-    const aulaExists = await pool.query("SELECT id FROM aulas WHERE id = $1", [
-      aulaId,
-    ]);
-    if (aulaExists.rows.length === 0)
-      return res.status(404).json({ message: "Aula no encontrada" });
+    const aulaExists = await pool.query("SELECT id FROM aulas WHERE id = $1", [aulaId]);
+    if (aulaExists.rows.length === 0) return res.status(404).json({ message: "Aula no encontrada" });
+
     const query = `
             SELECT 
                 u.id as student_id, u.name, u.email,
@@ -250,7 +248,7 @@ app.get("/teacher/classroom-metrics/:aulaId", async (req, res) => {
             FROM usuarios u
             LEFT JOIN intentos_desafio i ON u.id = i.student_id
             WHERE u.aula_id = $1 AND u.role = 'estudiante'
-            ORDER BY u.id, i.fecha_intento DESC;
+            ORDER BY u.id, i.fecha_intento ASC; -- ASC: El último del array será el más reciente
         `;
     const result = await pool.query(query, [aulaId]);
     const estudiantesMap = new Map();
@@ -262,9 +260,8 @@ app.get("/teacher/classroom-metrics/:aulaId", async (req, res) => {
           name: row.name,
           email: row.email,
           hitosCompletados: new Set(),
-          intentosPorNivelDif: {},
-          pistasPorNivelDif: {},
-          ultima_actividad: row.fecha_intento || null,
+          intentosPorHito: {}, 
+          ultima_actividad: null,
           alerta: false,
         });
       }
@@ -273,20 +270,21 @@ app.get("/teacher/classroom-metrics/:aulaId", async (req, res) => {
       if (!row.nivel) return;
 
       const hitoKey = `${row.nivel}-${row.dificultad}`;
+      estudiante.ultima_actividad = row.fecha_intento; 
 
       if (row.estado === "completado") {
         estudiante.hitosCompletados.add(hitoKey);
       }
 
-      if (!estudiante.intentosPorNivelDif[hitoKey]) {
-        estudiante.intentosPorNivelDif[hitoKey] = [];
+      if (!estudiante.intentosPorHito[hitoKey]) {
+        estudiante.intentosPorHito[hitoKey] = [];
       }
-      estudiante.intentosPorNivelDif[hitoKey].push(row.estado);
-
-      if (!estudiante.pistasPorNivelDif[hitoKey]) {
-        estudiante.pistasPorNivelDif[hitoKey] = [];
-      }
-      estudiante.pistasPorNivelDif[hitoKey].push(row.pistas_utilizadas || 0);
+      
+      // Guardamos la partida completa
+      estudiante.intentosPorHito[hitoKey].push({
+         estado: row.estado,
+         pistas: parseInt(row.pistas_utilizadas) || 0
+      });
     });
 
     let sumaProgreso = 0;
@@ -296,42 +294,55 @@ app.get("/teacher/classroom-metrics/:aulaId", async (req, res) => {
     estudiantesMap.forEach((est) => {
       const porcentaje = Math.round((est.hitosCompletados.size / 15) * 100);
       est.progreso = porcentaje;
-      est.progreso = porcentaje;
       sumaProgreso += porcentaje;
 
-      for (const hito in est.intentosPorNivelDif) {
-        const intentos = est.intentosPorNivelDif[hito];
-        const completado = intentos.includes("completado");
+      // --- LÓGICA MADURA DE ALERTA ---
+      for (const hito in est.intentosPorHito) {
+        const historialHito = est.intentosPorHito[hito]; // Array ordenado del más viejo al más nuevo
+        
+        // 1. Condición Básica: Si el usuario está atascado (3 o más intentos fallidos en total y aún no lo pasa)
+        const fallosTotales = historialHito.filter(i => i.estado !== 'completado').length;
+        const yaEstaCompletado = historialHito.some(i => i.estado === 'completado');
+        
+        let alertaAtascado = false;
+        if (fallosTotales >= 3 && !yaEstaCompletado) {
+           alertaAtascado = true;
+        }
 
-        // Calcular promedio de pistas de este hito específico
-        const pistas = est.pistasPorNivelDif[hito] || [];
-        const sumaPistas = pistas.reduce((a, b) => a + b, 0);
-        const promedioPistas =
-          pistas.length > 0 ? sumaPistas / pistas.length : 0;
+        // 2. Condición por Dependencia de Pistas:
+        // Revisamos cuál fue su *último* intento completado exitosamente
+        let alertaDependenciaPistas = false;
+        if (yaEstaCompletado) {
+           // Como lo ordenamos ASC, el último de la lista que sea 'completado' es su victoria más reciente
+           const ultimoExito = [...historialHito].reverse().find(i => i.estado === 'completado');
+           
+           // Si su victoria más reciente se logró abusando de las pistas (>= 3), sigue con alerta
+           if (ultimoExito && ultimoExito.pistas >= 3) {
+              alertaDependenciaPistas = true;
+           }
+        } else {
+           // Si aún no lo pasa, sacamos el promedio de pistas usadas hasta ahora
+           const totalPistas = historialHito.reduce((sum, item) => sum + item.pistas, 0);
+           const promedioPistas = historialHito.length > 0 ? totalPistas / historialHito.length : 0;
+           if (promedioPistas >= 3) alertaDependenciaPistas = true;
+        }
 
-        const totalIntentos = intentos.length;
-
-        // REGLA: 3 o más intentos en total OR promedio de pistas >= 3 (Y que no lo haya completado aún)
-        const alertaHito =
-          (totalIntentos >= 3 || promedioPistas >= 3) && !completado;
-
-        if (alertaHito) {
+        if (alertaAtascado || alertaDependenciaPistas) {
           est.alerta = true;
-          break; // Si tiene alerta en un hito, ya califica globalmente como "con dificultades"
+          break; 
         }
       }
 
       if (est.alerta) estudiantesConDificultad++;
+      
       delete est.hitosCompletados;
-      delete est.intentosPorNivelDif;
-      delete est.pistasPorNivelDif;
+      delete est.intentosPorHito;
 
       estudiantesArray.push(est);
     });
 
     const totalEstudiantes = estudiantesArray.length;
-    const progresoPromedio =
-      totalEstudiantes > 0 ? Math.round(sumaProgreso / totalEstudiantes) : 0;
+    const progresoPromedio = totalEstudiantes > 0 ? Math.round(sumaProgreso / totalEstudiantes) : 0;
 
     res.json({
       kpis: { totalEstudiantes, progresoPromedio, estudiantesConDificultad },
@@ -415,6 +426,8 @@ app.get("/teacher/student-details/:studentId", async (req, res) => {
       return res.status(404).json({ message: "Estudiante no encontrado" });
 
     const userData = userResult.rows[0];
+    
+    // Traemos el historial con JSON_AGG para no perder la relación de cada partida individual
     const statsQuery = `
             SELECT 
                 nivel, 
@@ -422,8 +435,8 @@ app.get("/teacher/student-details/:studentId", async (req, res) => {
                 COUNT(id) as total_intentos,
                 ROUND(AVG(tiempo_segundos)) as tiempo_promedio,
                 ROUND(AVG(pistas_utilizadas), 1) as pistas_promedio,
-                -- Agregamos los arrays para analizar la alerta en JS
-                array_agg(estado ORDER BY fecha_intento DESC) as historial_estados
+                -- Agrupamos los objetos enteros (estado y pistas) ordenados por fecha ascendente
+                json_agg(json_build_object('estado', estado, 'pistas', pistas_utilizadas) ORDER BY fecha_intento ASC) as historial
             FROM intentos_desafio
             WHERE student_id = $1
             GROUP BY nivel, dificultad
@@ -431,14 +444,40 @@ app.get("/teacher/student-details/:studentId", async (req, res) => {
                      CASE dificultad WHEN 'easy' THEN 1 WHEN 'medium' THEN 2 WHEN 'hard' THEN 3 END;
         `;
     const statsResult = await pool.query(statsQuery, [studentId]);
+    
     const nivelesDesglose = statsResult.rows.map((row) => {
-      const completado = row.historial_estados.includes("completado");
-      let estadoHito = completado ? "Completado" : "En progreso";
-      const alerta =
-        parseInt(row.total_intentos) >= 3 ||
-        parseFloat(row.pistas_promedio) >= 3;
-      if (alerta && !completado) {
-        estadoHito = "Requiere apoyo";
+      const historial = row.historial || [];
+      const yaEstaCompletado = historial.some(i => i.estado === 'completado');
+      let estadoHito = yaEstaCompletado ? "Completado" : "En progreso";
+      
+      let alerta = false;
+      const fallosTotales = historial.filter(i => i.estado !== 'completado').length;
+
+      // 1. Alerta por atasco
+      if (fallosTotales >= 3 && !yaEstaCompletado) {
+          alerta = true;
+      }
+
+      // 2. Alerta por pistas
+      if (yaEstaCompletado) {
+          // Buscamos su última victoria (el último objeto en el array que sea completado)
+          const ultimoExito = [...historial].reverse().find(i => i.estado === 'completado');
+          if (ultimoExito && ultimoExito.pistas >= 3) {
+             alerta = true;
+          }
+      } else {
+          // Si no ha ganado, evaluamos el promedio de pistas usadas hasta ahora
+          if (parseFloat(row.pistas_promedio) >= 3) alerta = true;
+      }
+
+      // 3. Asignación del estado visual en la tabla del maestro
+      if (alerta) {
+        // Le mostramos un texto diferente al maestro según por qué está la alerta
+        if (yaEstaCompletado) {
+           estadoHito = "Aprobado con asistencia"; // Pasó, pero abusó de pistas
+        } else {
+           estadoHito = "Requiere apoyo"; // Está atascado y no ha podido pasar
+        }
       }
 
       return {
@@ -449,7 +488,7 @@ app.get("/teacher/student-details/:studentId", async (req, res) => {
         intentos_realizados: parseInt(row.total_intentos),
         tiempo_promedio_segundos: parseInt(row.tiempo_promedio),
         pistas_promedio: parseFloat(row.pistas_promedio),
-        tiene_alerta: alerta && !completado,
+        tiene_alerta: alerta,
       };
     });
 
