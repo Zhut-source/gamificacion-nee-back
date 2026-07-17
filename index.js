@@ -248,7 +248,7 @@ app.get("/teacher/classroom-metrics/:aulaId", async (req, res) => {
             FROM usuarios u
             LEFT JOIN intentos_desafio i ON u.id = i.student_id
             WHERE u.aula_id = $1 AND u.role = 'estudiante'
-            ORDER BY u.id, i.fecha_intento ASC; -- ASC: El último del array será el más reciente
+            ORDER BY u.id, i.fecha_intento ASC;
         `;
     const result = await pool.query(query, [aulaId]);
     const estudiantesMap = new Map();
@@ -280,27 +280,25 @@ app.get("/teacher/classroom-metrics/:aulaId", async (req, res) => {
         estudiante.intentosPorHito[hitoKey] = [];
       }
       
-      // Guardamos la partida completa
       estudiante.intentosPorHito[hitoKey].push({
          estado: row.estado,
          pistas: parseInt(row.pistas_utilizadas) || 0
       });
     });
 
-    let sumaProgreso = 0;
     let estudiantesConDificultad = 0;
+    let estudiantesBuenDesempeno = 0; // NUEVO KPI
     const estudiantesArray = [];
 
     estudiantesMap.forEach((est) => {
       const porcentaje = Math.round((est.hitosCompletados.size / 15) * 100);
       est.progreso = porcentaje;
-      sumaProgreso += porcentaje;
 
-      // --- LÓGICA MADURA DE ALERTA ---
+      let tieneCompletados = false;
+      let cumpleBuenDesempeno = true; // Asumimos que sí, hasta que se demuestre lo contrario
+
       for (const hito in est.intentosPorHito) {
-        const historialHito = est.intentosPorHito[hito]; // Array ordenado del más viejo al más nuevo
-        
-        // 1. Condición Básica: Si el usuario está atascado (3 o más intentos fallidos en total y aún no lo pasa)
+        const historialHito = est.intentosPorHito[hito];
         const fallosTotales = historialHito.filter(i => i.estado !== 'completado').length;
         const yaEstaCompletado = historialHito.some(i => i.estado === 'completado');
         
@@ -309,19 +307,21 @@ app.get("/teacher/classroom-metrics/:aulaId", async (req, res) => {
            alertaAtascado = true;
         }
 
-        // 2. Condición por Dependencia de Pistas:
-        // Revisamos cuál fue su *último* intento completado exitosamente
         let alertaDependenciaPistas = false;
         if (yaEstaCompletado) {
-           // Como lo ordenamos ASC, el último de la lista que sea 'completado' es su victoria más reciente
+           tieneCompletados = true;
            const ultimoExito = [...historialHito].reverse().find(i => i.estado === 'completado');
-           
-           // Si su victoria más reciente se logró abusando de las pistas (>= 3), sigue con alerta
            if (ultimoExito && ultimoExito.pistas >= 3) {
               alertaDependenciaPistas = true;
            }
+           const intentosTotales = historialHito.length;
+           const pistasTotalesUsadas = historialHito.reduce((sum, item) => sum + item.pistas, 0);
+           
+           if (intentosTotales >= 3 || pistasTotalesUsadas > 0) {
+               cumpleBuenDesempeno = false;
+           }
+
         } else {
-           // Si aún no lo pasa, sacamos el promedio de pistas usadas hasta ahora
            const totalPistas = historialHito.reduce((sum, item) => sum + item.pistas, 0);
            const promedioPistas = historialHito.length > 0 ? totalPistas / historialHito.length : 0;
            if (promedioPistas >= 3) alertaDependenciaPistas = true;
@@ -329,8 +329,11 @@ app.get("/teacher/classroom-metrics/:aulaId", async (req, res) => {
 
         if (alertaAtascado || alertaDependenciaPistas) {
           est.alerta = true;
-          break; 
         }
+      }
+
+      if (tieneCompletados && cumpleBuenDesempeno && !est.alerta) {
+         estudiantesBuenDesempeno++;
       }
 
       if (est.alerta) estudiantesConDificultad++;
@@ -342,10 +345,9 @@ app.get("/teacher/classroom-metrics/:aulaId", async (req, res) => {
     });
 
     const totalEstudiantes = estudiantesArray.length;
-    const progresoPromedio = totalEstudiantes > 0 ? Math.round(sumaProgreso / totalEstudiantes) : 0;
 
     res.json({
-      kpis: { totalEstudiantes, progresoPromedio, estudiantesConDificultad },
+      kpis: { totalEstudiantes, estudiantesBuenDesempeno, estudiantesConDificultad },
       estudiantes: estudiantesArray,
     });
   } catch (error) {
