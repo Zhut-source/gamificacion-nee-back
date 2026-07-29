@@ -103,25 +103,45 @@ CREATE TABLE IF NOT EXISTS intentos_desafio (
     fecha_intento TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. DATOS SEMILLA (Seed Data)
+-- DATOS SEMILLA (Seed Data)
 
 INSERT INTO desafios (nivel, nombre, descripcion_nivel, descripcion_juego, objetivos) VALUES 
-(1, 'Secuenciación', 'Aprende a dar instrucciones paso a paso en el orden correcto.', 'El robot explorador necesita llegar a la base de carga. Tu misión es darle las instrucciones correctas, paso a paso, para que no se estrelle.', '["Programa la ruta hasta la bandera verde.", "Usa los botones de dirección.", "Cuidado con los muros grises."]')
-ON CONFLICT (nivel) DO NOTHING;
+(1, 'Secuenciación', 'Aprende a dar instrucciones paso a paso en el orden correcto.', 'El robot explorador necesita llegar a la base de carga. Tu misión es darle las instrucciones correctas, paso a paso, para que no se estrelle.', '["Programa la ruta hasta la bandera verde.", "Usa los botones de dirección.", "Cuidado con los muros grises."]'),
+(2, 'Patrones', 'Identifica los patrones y úsalos tu a favor.', 'Tu misión es apagar todas las luces del tablero usando un patrón.', '["Apagar completamente todo el tablero", "Identificar el patrón de apagado o encendido", "Usar pocos movimientos"]'),
+(3, 'Repeticiones', 'Aprende a usar repeticiones para simplificar secuencias.', 'Tu misión es ayudar al robot a llegar a la meta, usando secuencias repetidas.', '["Llegar a la meta", "No chocar con obstáculos", "Usar bloques de repetición, para repetir el movimiento del robot"]'),
+(4, 'Condicionales', 'Aprende el funcionamiento básico de las condicionales y sus operadores.', 'Tu misión es encontrar los pares de las tarjetas y agruparlas donde pertenecen.', '["Descubrir todos los pares", "Identificar si son operadores condicionales u operadores matemáticos"]'),
+(5, 'Descomposición', 'Aprende a descomponer problemas grandes en trozos más pequeños.', 'Tu misión es rellenar el tablero de rectángulos, usando la cantidad de áreas que ves en el tablero.', '["Rellenar el tablero completamente", "El área total debe ser del tamaño al número que encerraste"]')
+ON CONFLICT (nivel) DO UPDATE SET 
+    nombre = EXCLUDED.nombre,
+    descripcion_nivel = EXCLUDED.descripcion_nivel,
+    descripcion_juego = EXCLUDED.descripcion_juego,
+    objetivos = EXCLUDED.objetivos;
 
-INSERT INTO desafios (nivel, nombre) VALUES 
-(2, 'Patrones'),
-(3, 'Repeticiones'),
-(4, 'Condicionales'),
-(5, 'Descomposición')
-ON CONFLICT (nivel) DO NOTHING;
-
--- Nota: Si cambiaste las rutas o tienes más insignias para lvl2, lvl3, puedes añadirlas aquí
 INSERT INTO insignias (codigo, nombre, descripcion, imagen_url) VALUES 
-('lvl1_complete', 'Primer Paso', 'Completó el Nivel 1 en todas sus dificultades', 'assets/pictures/insigneas/primer_paso.png'),
-('proTimer', 'Veloz', 'Completó el modo carrera en menos de 60 segundos', 'assets/pictures/insigneas/proTimer.png'),
+('lvl1_complete', 'Primer Paso', 'Completó el Nivel 1 en todas sus dificultades', 'assets/pictures/insigneas/primerSecuenciacion.png'),
+('proTimer', 'Veloz', 'Completó el modo carrera en menos de 60 segundos', 'assets/pictures/insigneas/timerSecuenciacion.png'),
 ('proSecuenciacion', 'Lógica Pro', 'Pasó el modo carrera sin fallar ni una sola vez', 'assets/pictures/insigneas/proSecuenciacion.png'),
-('masterSecuenciacion', 'Imparable', 'Consiguió ser Veloz y Lógica Pro al mismo tiempo', 'assets/pictures/insigneas/masterSecuenciacion.png')
+('masterSecuenciacion', 'Imparable', 'Consiguió ser Veloz y Lógica Pro al mismo tiempo', 'assets/pictures/insigneas/masterSecuenciacion.png'),
+
+('lvl2_complete', 'Buscador de Patrones', 'Completó el Nivel 2 en todas sus dificultades', 'assets/pictures/insigneas/primerPatrones.png'),
+('timerPatrones', 'Veloz en Patrones', 'Completó el modo carrera del Nivel 2 en tiempo récord', 'assets/pictures/insigneas/timerPatrones.png'),
+('proPatrones', 'Pro de los Patrones', 'Pasó el modo carrera del Nivel 2 sin fallar', 'assets/pictures/insigneas/proPatrones.png'),
+('masterPatrones', 'Maestro de Patrones', 'Consiguió ser Veloz y Pro en el Nivel 2 al mismo tiempo', 'assets/pictures/insigneas/masterPatrones.png'),
+
+('lvl3_complete', 'Rey del Bucle', 'Completó el Nivel 3 en todas sus dificultades', 'assets/pictures/insigneas/primerRepeticiones.png'),
+('timerRepeticiones', 'Veloz en Repeticiones', 'Completó el modo carrera del Nivel 3 en tiempo récord', 'assets/pictures/insigneas/timerRepeticiones.png'),
+('proRepeticiones', 'Pro de las Repeticiones', 'Pasó el modo carrera del Nivel 3 sin fallar', 'assets/pictures/insigneas/proRepeticiones.png'),
+('masterRepeticiones', 'Maestro de Repeticiones', 'Consiguió ser Veloz y Pro en el Nivel 3 al mismo tiempo', 'assets/pictures/insigneas/masterRepeticiones.png'),
+
+('lvl4_complete', 'Tomador de Decisiones', 'Completó el Nivel 4 en todas sus dificultades', 'assets/pictures/insigneas/primerCondicionales.png'),
+('timerCondicionales', 'Veloz en Condicionales', 'Completó el modo carrera del Nivel 4 en tiempo récord', 'assets/pictures/insigneas/timerCondicionales.png'),
+('proCondicionales', 'Pro de las Condicionales', 'Pasó el modo carrera del Nivel 4 sin fallar', 'assets/pictures/insigneas/proCondicionales.png'),
+('masterCondicionales', 'Maestro de Condicionales', 'Consiguió ser Veloz y Pro en el Nivel 4 al mismo tiempo', 'assets/pictures/insigneas/masterCondicionales.png'),
+
+('lvl5_complete', 'Analista de Problemas', 'Completó el Nivel 5 en todas sus dificultades', 'assets/pictures/insigneas/primerDescomposicion.png'),
+('timerDescomposicion', 'Veloz en Descomposición', 'Completó el modo carrera del Nivel 5 en tiempo récord', 'assets/pictures/insigneas/timerDescomposicion.png'),
+('proDescomposicion', 'Pro de la Descomposición', 'Pasó el modo carrera del Nivel 5 sin fallar', 'assets/pictures/insigneas/proDescomposicion.png'),
+('masterDescomposicion', 'Maestro de Descomposición', 'Consiguió ser Veloz y Pro en el Nivel 5 al mismo tiempo', 'assets/pictures/insigneas/masterDescomposicion.png')
 ON CONFLICT (codigo) DO NOTHING;
 
 INSERT INTO cat_horarios (nombre) VALUES ('Matutino'), ('Vespertino'), ('Nocturno') ON CONFLICT DO NOTHING;

@@ -39,9 +39,9 @@ const pool = new Pool(poolConfig);
 pool
   .connect()
   .then(() =>
-    console.log("✅ Base de datos PostgreSQL conectada exitosamente."),
+    console.log("Base de datos PostgreSQL conectada exitosamente."),
   )
-  .catch((err) => console.error("❌ Error conectando a la BD", err.stack));
+  .catch((err) => console.error("Error conectando a la BD", err.stack));
 
 //# Ruta registro
 app.post("/register", async (req, res) => {
@@ -1013,7 +1013,47 @@ app.put("/admin/users/:id/toggle-status", async (req, res) => {
   }
 });
 
+// ADMIN - ACTUALIZAR DATOS DE USUARIO (Nombre y Correo)
+app.put('/admin/users/:id/update', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, email } = req.body;
+
+        // Verificar si el nuevo correo ya existe en OTRA cuenta
+        const emailCheck = await pool.query('SELECT id FROM usuarios WHERE email = $1 AND id != $2', [email, id]);
+        if (emailCheck.rows.length > 0) {
+            return res.status(400).json({ message: 'El correo ya está en uso por otro usuario.' });
+        }
+
+        const result = await pool.query(
+            'UPDATE usuarios SET name = $1, email = $2 WHERE id = $3 RETURNING id, name, email, role, is_active',
+            [name, email, id]
+        );
+        res.json({ success: true, message: 'Usuario actualizado', user: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ message: 'Error al actualizar usuario' });
+    }
+});
+
+
+// ADMIN - FORZAR CAMBIO DE CONTRASEÑA (Sin pedir la anterior)
+app.put('/admin/users/:id/force-password', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { newPassword } = req.body;
+
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+        await pool.query('UPDATE usuarios SET password = $1 WHERE id = $2', [hashedPassword, id]);
+        
+        res.json({ success: true, message: 'Contraseña del usuario actualizada con éxito.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Error al forzar cambio de contraseña' });
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor backend corriendo en http://localhost:${PORT}`);
+  console.log(`Servidor backend corriendo en http://localhost:${PORT}`);
 });
