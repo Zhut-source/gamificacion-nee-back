@@ -119,7 +119,7 @@ ON CONFLICT (nivel) DO UPDATE SET
 
 INSERT INTO insignias (codigo, nombre, descripcion, imagen_url) VALUES 
 ('lvl1_complete', 'Primer Paso', 'Completó el Nivel 1 en todas sus dificultades', 'assets/pictures/insigneas/primerSecuenciacion.png'),
-('proTimer', 'Veloz', 'Completó el modo carrera en menos de 60 segundos', 'assets/pictures/insigneas/timerSecuenciacion.png'),
+('timerSecuenciacion', 'Veloz', 'Completó el modo carrera en menos de 60 segundos', 'assets/pictures/insigneas/timerSecuenciacion.png'),
 ('proSecuenciacion', 'Lógica Pro', 'Pasó el modo carrera sin fallar ni una sola vez', 'assets/pictures/insigneas/proSecuenciacion.png'),
 ('masterSecuenciacion', 'Imparable', 'Consiguió ser Veloz y Lógica Pro al mismo tiempo', 'assets/pictures/insigneas/masterSecuenciacion.png'),
 

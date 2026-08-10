@@ -39,9 +39,9 @@ const pool = new Pool(poolConfig);
 pool
   .connect()
   .then(() =>
-    console.log("Base de datos PostgreSQL conectada exitosamente."),
+    console.log("La conexión con la base de datos PostgreSQL se estableció correctamente."),
   )
-  .catch((err) => console.error("Error conectando a la BD", err.stack));
+  .catch((err) => console.error("No fue posible establecer la conexión con la base de datos PostgreSQL."));
 
 //# Ruta registro
 app.post("/register", async (req, res) => {
@@ -68,7 +68,7 @@ app.post("/register", async (req, res) => {
       .status(201)
       .json({ message: "Usuario registrado con éxito", user: newUser.rows[0] });
   } catch (error) {
-    console.error(error.message);
+    console.error("Se produjo un error durante el procesamiento de la solicitud.");
     res.status(500).json({ message: "Error en el servidor" });
   }
 });
@@ -120,7 +120,7 @@ app.post("/login", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error(error.message);
+    console.error("Se produjo un error durante el procesamiento de la solicitud.");
     res.status(500).json({ message: "Error en el servidor" });
   }
 });
@@ -197,7 +197,7 @@ app.post("/join-class", async (req, res) => {
       aula: aula,
     });
   } catch (error) {
-    console.error(error);
+    console.error("Se produjo un error durante el procesamiento de la solicitud.");
     res.status(500).json({ message: "Error al unirse a la clase" });
   }
 });
@@ -229,7 +229,7 @@ app.get("/student-class/:studentId", async (req, res) => {
     }
     res.status(200).json(result.rows[0]);
   } catch (error) {
-    console.error("Error en GET /student-class:", error);
+    console.error("Se produjo un error al obtener la clase del estudiante.");
     res.status(500).json({ message: "Error interno del servidor." });
   }
 });
@@ -351,7 +351,7 @@ app.get("/teacher/classroom-metrics/:aulaId", async (req, res) => {
       estudiantes: estudiantesArray,
     });
   } catch (error) {
-    console.error(error);
+    console.error("Se produjo un error durante el procesamiento de la solicitud.");
     res.status(500).json({ message: "Error interno" });
   }
 });
@@ -405,7 +405,7 @@ app.get("/student/challenges/:studentId", async (req, res) => {
 
     res.json(desafiosConEstado);
   } catch (error) {
-    console.error("Error cargando desafíos del estudiante:", error);
+    console.error("Se produjo un error al cargar los desafíos del estudiante.");
     res.status(500).json({ message: "Error interno" });
   }
 });
@@ -508,7 +508,7 @@ app.get("/teacher/student-details/:studentId", async (req, res) => {
       historial_niveles: nivelesDesglose,
     });
   } catch (error) {
-    console.error(error);
+    console.error("Se produjo un error durante el procesamiento de la solicitud.");
     res.status(500).json({ message: "Error interno" });
   }
 });
@@ -575,7 +575,7 @@ app.post("/student/save-attempt", async (req, res) => {
 
     res.json({ success: true, message: "Intento registrado" });
   } catch (error) {
-    console.error("Error guardando intento:", error);
+    console.error("Se produjo un error al registrar el intento del estudiante.");
     res.status(500).json({ message: "Error interno" });
   }
 });
@@ -719,7 +719,7 @@ app.post("/create-class", async (req, res) => {
       .status(201)
       .json({ message: "Clase creada con éxito", aula: newClass.rows[0] });
   } catch (error) {
-    console.error(error);
+    console.error("Se produjo un error durante el procesamiento de la solicitud.");
     res.status(500).json({ message: "Error al crear la clase" });
   }
 });
@@ -749,7 +749,7 @@ app.get("/admin/global-kpis", async (req, res) => {
       totalDesafios: parseInt(desafiosRes.rows[0].count),
     });
   } catch (error) {
-    console.error("Error obteniendo KPIs de Admin:", error);
+    console.error("Se produjo un error al obtener los indicadores generales del sistema.");
     res.status(500).json({ message: "Error interno del servidor" });
   }
 });
@@ -876,7 +876,7 @@ app.get("/admin/classrooms", async (req, res) => {
     const result = await pool.query(query);
     res.json(result.rows);
   } catch (error) {
-    console.error("Error cargando aulas (Admin):", error);
+    console.error("Se produjo un error al cargar las aulas administrativas.");
     res.status(500).json({ message: "Error cargando aulas" });
   }
 });
@@ -932,7 +932,7 @@ app.get("/admin/challenges", async (req, res) => {
     );
     res.json(result.rows);
   } catch (error) {
-    console.error("Error cargando desafíos (Admin):", error);
+    console.error("Se produjo un error al cargar los desafíos administrativos.");
     res.status(500).json({ message: "Error interno" });
   }
 });
@@ -970,7 +970,7 @@ app.put("/admin/challenges/:id", async (req, res) => {
       challenge: result.rows[0],
     });
   } catch (error) {
-    console.error("Error actualizando desafío:", error);
+    console.error("Se produjo un error al actualizar el desafío.");
     res.status(500).json({ message: "Error interno actualizando" });
   }
 });
@@ -1055,5 +1055,5 @@ app.put('/admin/users/:id/force-password', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Servidor backend corriendo en http://localhost:${PORT}`);
+  console.log(`El servidor backend se encuentra ejecutándose en el puerto ${PORT}.`);
 });
