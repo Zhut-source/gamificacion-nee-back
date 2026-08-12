@@ -1,4 +1,3 @@
-// init_db.js
 const { Pool } = require('pg');
 require('dotenv').config();
 
@@ -18,7 +17,6 @@ const poolConfig = process.env.DATABASE_URL
 const pool = new Pool(poolConfig);
 
 const initScript = `
-
 CREATE TABLE IF NOT EXISTS cat_horarios (
     id SERIAL PRIMARY KEY,
     nombre VARCHAR(50) UNIQUE NOT NULL
@@ -49,7 +47,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
     role VARCHAR(20) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     aula_id INTEGER,
-    is_active BOOLEAN DEFAULT true -- AÑADIDO: Control de baneo
+    is_active BOOLEAN DEFAULT true
 );
 
 CREATE TABLE IF NOT EXISTS aulas (
@@ -60,8 +58,8 @@ CREATE TABLE IF NOT EXISTS aulas (
     horario_id INTEGER REFERENCES cat_horarios(id),
     periodo_id INTEGER REFERENCES cat_periodos(id),
     materia_id INTEGER REFERENCES cat_materias(id),
-    nivel INTEGER,    -- AÑADIDO: Semestre/Nivel de la materia
-    aula_num INTEGER, -- AÑADIDO: Aula física
+    nivel INTEGER,
+    aula_num INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -95,15 +93,13 @@ CREATE TABLE IF NOT EXISTS insignias_estudiante (
 CREATE TABLE IF NOT EXISTS intentos_desafio (
     id SERIAL PRIMARY KEY,
     student_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
-    nivel INTEGER REFERENCES desafios(nivel) ON UPDATE CASCADE ON DELETE CASCADE, -- Corregida Relación Foránea Directa
+    nivel INTEGER REFERENCES desafios(nivel) ON UPDATE CASCADE ON DELETE CASCADE,
     dificultad VARCHAR(20) CHECK (dificultad IN ('easy', 'medium', 'hard')),
     estado VARCHAR(20) CHECK (estado IN ('completado', 'fallido', 'abandonado')),
     tiempo_segundos INTEGER NOT NULL,
     pistas_utilizadas INTEGER DEFAULT 0,
     fecha_intento TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
--- DATOS SEMILLA (Seed Data)
 
 INSERT INTO desafios (nivel, nombre, descripcion_nivel, descripcion_juego, objetivos) VALUES 
 (1, 'Secuenciación', 'Aprende a dar instrucciones paso a paso en el orden correcto.', 'El robot explorador necesita llegar a la base de carga. Tu misión es darle las instrucciones correctas, paso a paso, para que no se estrelle.', '["Programa la ruta hasta la bandera verde.", "Usa los botones de dirección.", "Cuidado con los muros grises."]'),
@@ -118,31 +114,34 @@ ON CONFLICT (nivel) DO UPDATE SET
     objetivos = EXCLUDED.objetivos;
 
 INSERT INTO insignias (codigo, nombre, descripcion, imagen_url) VALUES 
-('lvl1_complete', 'Primer Paso', 'Completó el Nivel 1 en todas sus dificultades', 'assets/pictures/insigneas/primerSecuenciacion.png'),
-('timerSecuenciacion', 'Veloz', 'Completó el modo carrera en menos de 60 segundos', 'assets/pictures/insigneas/timerSecuenciacion.png'),
-('proSecuenciacion', 'Lógica Pro', 'Pasó el modo carrera sin fallar ni una sola vez', 'assets/pictures/insigneas/proSecuenciacion.png'),
-('masterSecuenciacion', 'Imparable', 'Consiguió ser Veloz y Lógica Pro al mismo tiempo', 'assets/pictures/insigneas/masterSecuenciacion.png'),
+('lvl1_complete', 'Explorador de Secuencias', 'Completa las 3 dificultades del Nivel 1.', 'assets/pictures/insigneas/primerSecuenciacion.png'),
+('timerSecuenciacion', 'Veloz en Secuencias', 'Completa las 3 dificultades del Nivel 1 en modo carrera en menos de 60 segundos.', 'assets/pictures/insigneas/timerSecuenciacion.png'),
+('proSecuenciacion', 'Pro de las Secuencias', 'Completa las 3 dificultades del Nivel 1 en modo carrera al primer intento sin fallar.', 'assets/pictures/insigneas/proSecuenciacion.png'),
+('masterSecuenciacion', 'Maestro de Secuencias', 'Obtén las insignias Veloz y Pro del Nivel 1 al mismo tiempo.', 'assets/pictures/insigneas/masterSecuenciacion.png'),
 
-('lvl2_complete', 'Buscador de Patrones', 'Completó el Nivel 2 en todas sus dificultades', 'assets/pictures/insigneas/primerPatrones.png'),
-('timerPatrones', 'Veloz en Patrones', 'Completó el modo carrera del Nivel 2 en tiempo récord', 'assets/pictures/insigneas/timerPatrones.png'),
-('proPatrones', 'Pro de los Patrones', 'Pasó el modo carrera del Nivel 2 sin fallar', 'assets/pictures/insigneas/proPatrones.png'),
-('masterPatrones', 'Maestro de Patrones', 'Consiguió ser Veloz y Pro en el Nivel 2 al mismo tiempo', 'assets/pictures/insigneas/masterPatrones.png'),
+('lvl2_complete', 'Buscador de Patrones', 'Completa las 3 dificultades del Nivel 2.', 'assets/pictures/insigneas/primerPatrones.png'),
+('timerPatrones', 'Veloz en Patrones', 'Completa las 3 dificultades del Nivel 2 en modo carrera en menos de 60 segundos.', 'assets/pictures/insigneas/timerPatrones.png'),
+('proPatrones', 'Pro de los Patrones', 'Completa las 3 dificultades del Nivel 2 en modo carrera al primer intento sin fallar.', 'assets/pictures/insigneas/proPatrones.png'),
+('masterPatrones', 'Maestro de Patrones', 'Obtén las insignias Veloz y Pro del Nivel 2 al mismo tiempo.', 'assets/pictures/insigneas/masterPatrones.png'),
 
-('lvl3_complete', 'Rey del Bucle', 'Completó el Nivel 3 en todas sus dificultades', 'assets/pictures/insigneas/primerRepeticiones.png'),
-('timerRepeticiones', 'Veloz en Repeticiones', 'Completó el modo carrera del Nivel 3 en tiempo récord', 'assets/pictures/insigneas/timerRepeticiones.png'),
-('proRepeticiones', 'Pro de las Repeticiones', 'Pasó el modo carrera del Nivel 3 sin fallar', 'assets/pictures/insigneas/proRepeticiones.png'),
-('masterRepeticiones', 'Maestro de Repeticiones', 'Consiguió ser Veloz y Pro en el Nivel 3 al mismo tiempo', 'assets/pictures/insigneas/masterRepeticiones.png'),
+('lvl3_complete', 'Rey del Bucle', 'Completa las 3 dificultades del Nivel 3.', 'assets/pictures/insigneas/primerRepeticiones.png'),
+('timerRepeticiones', 'Veloz en Repeticiones', 'Completa las 3 dificultades del Nivel 3 en modo carrera en menos de 60 segundos.', 'assets/pictures/insigneas/timerRepeticiones.png'),
+('proRepeticiones', 'Pro de las Repeticiones', 'Completa las 3 dificultades del Nivel 3 en modo carrera al primer intento sin fallar.', 'assets/pictures/insigneas/proRepeticiones.png'),
+('masterRepeticiones', 'Maestro de Repeticiones', 'Obtén las insignias Veloz y Pro del Nivel 3 al mismo tiempo.', 'assets/pictures/insigneas/masterRepeticiones.png'),
 
-('lvl4_complete', 'Tomador de Decisiones', 'Completó el Nivel 4 en todas sus dificultades', 'assets/pictures/insigneas/primerCondicionales.png'),
-('timerCondicionales', 'Veloz en Condicionales', 'Completó el modo carrera del Nivel 4 en tiempo récord', 'assets/pictures/insigneas/timerCondicionales.png'),
-('proCondicionales', 'Pro de las Condicionales', 'Pasó el modo carrera del Nivel 4 sin fallar', 'assets/pictures/insigneas/proCondicionales.png'),
-('masterCondicionales', 'Maestro de Condicionales', 'Consiguió ser Veloz y Pro en el Nivel 4 al mismo tiempo', 'assets/pictures/insigneas/masterCondicionales.png'),
+('lvl4_complete', 'Tomador de Decisiones', 'Completa las 3 dificultades del Nivel 4.', 'assets/pictures/insigneas/primerCondicionales.png'),
+('timerCondicionales', 'Veloz en Condicionales', 'Completa las 3 dificultades del Nivel 4 en modo carrera en menos de 60 segundos.', 'assets/pictures/insigneas/timerCondicionales.png'),
+('proCondicionales', 'Pro de las Condicionales', 'Completa las 3 dificultades del Nivel 4 en modo carrera al primer intento sin fallar.', 'assets/pictures/insigneas/proCondicionales.png'),
+('masterCondicionales', 'Maestro de Condicionales', 'Obtén las insignias Veloz y Pro del Nivel 4 al mismo tiempo.', 'assets/pictures/insigneas/masterCondicionales.png'),
 
-('lvl5_complete', 'Analista de Problemas', 'Completó el Nivel 5 en todas sus dificultades', 'assets/pictures/insigneas/primerDescomposicion.png'),
-('timerDescomposicion', 'Veloz en Descomposición', 'Completó el modo carrera del Nivel 5 en tiempo récord', 'assets/pictures/insigneas/timerDescomposicion.png'),
-('proDescomposicion', 'Pro de la Descomposición', 'Pasó el modo carrera del Nivel 5 sin fallar', 'assets/pictures/insigneas/proDescomposicion.png'),
-('masterDescomposicion', 'Maestro de Descomposición', 'Consiguió ser Veloz y Pro en el Nivel 5 al mismo tiempo', 'assets/pictures/insigneas/masterDescomposicion.png')
-ON CONFLICT (codigo) DO NOTHING;
+('lvl5_complete', 'Analista de Problemas', 'Completa las 3 dificultades del Nivel 5.', 'assets/pictures/insigneas/primerDescomposicion.png'),
+('timerDescomposicion', 'Veloz en Descomposición', 'Completa las 3 dificultades del Nivel 5 en modo carrera en menos de 60 segundos.', 'assets/pictures/insigneas/timerDescomposicion.png'),
+('proDescomposicion', 'Pro de la Descomposición', 'Completa las 3 dificultades del Nivel 5 en modo carrera al primer intento sin fallar.', 'assets/pictures/insigneas/proDescomposicion.png'),
+('masterDescomposicion', 'Maestro de Descomposición', 'Obtén las insignias Veloz y Pro del Nivel 5 al mismo tiempo.', 'assets/pictures/insigneas/masterDescomposicion.png')
+ON CONFLICT (codigo) DO UPDATE SET 
+    nombre = EXCLUDED.nombre,
+    descripcion = EXCLUDED.descripcion,
+    imagen_url = EXCLUDED.imagen_url;
 
 INSERT INTO cat_horarios (nombre) VALUES ('Matutino'), ('Vespertino'), ('Nocturno') ON CONFLICT DO NOTHING;
 INSERT INTO cat_periodos (nombre) VALUES ('Semestral'), ('Trimestral') ON CONFLICT DO NOTHING;
@@ -163,12 +162,12 @@ ON CONFLICT DO NOTHING;
 
 async function initializeDB() {
   try {
-    console.log("⏳ Iniciando la creación de tablas y datos semilla...");
+    console.log("Iniciando la creación de tablas y datos semilla...");
     await pool.query(initScript);
-    console.log("✅ ¡Base de datos inicializada con éxito!");
+    console.log("¡Base de datos inicializada con éxito!");
     process.exit(0);
   } catch (err) {
-    console.error("❌ Error inicializando la BD:", err);
+    console.error("Error inicializando la BD:", err);
     process.exit(1);
   }
 }
